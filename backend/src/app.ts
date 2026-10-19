@@ -1,4 +1,4 @@
-import express, { type Express, type Request, type Response } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
@@ -24,7 +24,10 @@ export const createApp = (): Express => {
   // CORS configuration
   app.use(
     cors({
-      origin: (origin, callback) => {
+      origin: (
+        origin: string | undefined,
+        callback: (err: Error | null, allow?: boolean) => void
+      ) => {
         if (!origin) return callback(null, true);
         if (config.allowedOrigins.includes(origin) || config.nodeEnv === 'development') {
           return callback(null, true);
@@ -58,7 +61,7 @@ export const createApp = (): Express => {
 
   if (staticDist) {
     app.use(express.static(staticDist));
-    app.get('*', (req: Request, res: Response, next) => {
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith('/api')) return next();
       res.sendFile(path.join(staticDist, 'index.html'));
     });
