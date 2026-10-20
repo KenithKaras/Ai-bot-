@@ -18,6 +18,8 @@ export const createApp = (): Express => {
     helmet({
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
+      crossOriginOpenerPolicy: false,
     })
   );
 
@@ -56,6 +58,8 @@ export const createApp = (): Express => {
   const distCandidates = [
     path.resolve(process.cwd(), 'frontend/dist'),
     path.resolve(process.cwd(), '../frontend/dist'),
+    path.resolve(__dirname, '../../frontend/dist'),
+    path.resolve(__dirname, '../frontend/dist'),
   ];
   const staticDist = distCandidates.find((d) => fs.existsSync(d));
 
@@ -63,6 +67,10 @@ export const createApp = (): Express => {
     app.use(express.static(staticDist));
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith('/api')) return next();
+      // Don't return index.html for static assets that failed to load
+      if (/\.[a-zA-Z0-9]+$/.test(req.path)) {
+        return res.status(404).send('Asset not found');
+      }
       res.sendFile(path.join(staticDist, 'index.html'));
     });
   } else {

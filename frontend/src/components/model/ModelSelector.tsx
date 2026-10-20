@@ -22,11 +22,11 @@ interface ModelSelectorProps {
 }
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
-  models,
-  selectedModelId,
-  selectedModel,
-  isLoading,
-  error,
+  models = [],
+  selectedModelId = '',
+  selectedModel = null,
+  isLoading = false,
+  error = null,
   onSelectModel,
   onRefresh,
 }) => {
@@ -44,17 +44,25 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredModels = models.filter((m) => {
-    const q = search.toLowerCase();
-    return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+  const safeModels = Array.isArray(models) ? models : [];
+  const filteredModels = safeModels.filter((m) => {
+    if (!m || !m.id) return false;
+    const q = (search || '').toLowerCase().trim();
+    if (!q) return true;
+    const idMatch = (m.id || '').toLowerCase().includes(q);
+    const nameMatch = (m.name || '').toLowerCase().includes(q);
+    return idMatch || nameMatch;
   });
 
-  const displayName = selectedModel ? selectedModel.name : selectedModelId;
-  const isSelectedClaude = selectedModel?.isClaude || selectedModelId.toLowerCase().includes('claude');
-  const isSelectedFast =
-    selectedModelId.toLowerCase().includes('sonnet') ||
-    selectedModelId.toLowerCase().includes('flash') ||
-    selectedModelId.toLowerCase().includes('turbo');
+  const displayName = selectedModel?.name || selectedModel?.id || selectedModelId || 'Select Model';
+  const isSelectedClaude = Boolean(
+    selectedModel?.isClaude || (selectedModelId || '').toLowerCase().includes('claude')
+  );
+  const isSelectedFast = Boolean(
+    (selectedModelId || '').toLowerCase().includes('sonnet') ||
+    (selectedModelId || '').toLowerCase().includes('flash') ||
+    (selectedModelId || '').toLowerCase().includes('turbo')
+  );
 
   return (
     <div className="relative inline-block text-left" ref={dropdownRef}>
@@ -88,7 +96,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search 33+ Radox AI models..."
+                placeholder="Search models..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-surface-850 border border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -120,7 +128,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
           {/* Model List */}
           <div className="overflow-y-auto p-1.5 flex-1 divide-y divide-slate-100 dark:divide-slate-800/40">
-            {isLoading && models.length === 0 ? (
+            {isLoading && safeModels.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-500">
                 Fetching models from Radox AI gateway...
               </div>
@@ -131,11 +139,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             ) : (
               filteredModels.map((m) => {
                 const isSelected = m.id === selectedModelId;
-                const isFast =
-                  m.id.toLowerCase().includes('sonnet') ||
-                  m.id.toLowerCase().includes('flash') ||
-                  m.id.toLowerCase().includes('turbo');
-                const isOpus = m.id.toLowerCase().includes('opus');
+                const isFast = Boolean(
+                  (m.id || '').toLowerCase().includes('sonnet') ||
+                  (m.id || '').toLowerCase().includes('flash') ||
+                  (m.id || '').toLowerCase().includes('turbo')
+                );
+                const isOpus = Boolean((m.id || '').toLowerCase().includes('opus'));
 
                 return (
                   <button
@@ -174,24 +183,26 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
                       {/* Capabilities badges */}
                       <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
-                        {m.capabilities.streaming && (
+                        {m.capabilities?.streaming && (
                           <span className="flex items-center gap-0.5 text-emerald-500">
                             <Zap className="w-2.5 h-2.5" /> Stream
                           </span>
                         )}
-                        {m.capabilities.vision && (
+                        {m.capabilities?.vision && (
                           <span className="flex items-center gap-0.5 text-blue-400">
                             <Eye className="w-2.5 h-2.5" /> Vision
                           </span>
                         )}
-                        {m.capabilities.reasoning && (
+                        {m.capabilities?.reasoning && (
                           <span className="flex items-center gap-0.5 text-purple-400">
                             <BrainCircuit className="w-2.5 h-2.5" /> Reasoner
                           </span>
                         )}
-                        <span className="text-slate-400 font-mono text-[9px] uppercase">
-                          {m.ownedBy}
-                        </span>
+                        {m.ownedBy && (
+                          <span className="text-slate-400 font-mono text-[9px] uppercase">
+                            {m.ownedBy}
+                          </span>
+                        )}
                       </div>
                     </div>
 

@@ -75,7 +75,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         />
 
         {/* Clear active conversation messages */}
-        {activeConversation && activeConversation.messages.length > 0 && onClearConversation && (
+        {activeConversation && Array.isArray(activeConversation.messages) && activeConversation.messages.length > 0 && onClearConversation && (
           <button
             onClick={onClearConversation}
             className="p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-500 transition hidden sm:flex"

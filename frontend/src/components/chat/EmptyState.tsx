@@ -40,7 +40,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   selectedModelId,
   onSelectPrompt,
 }) => {
-  const isOpus = selectedModelId.toLowerCase().includes('opus');
+  const isOpus = Boolean(selectedModelId && selectedModelId.toLowerCase().includes('opus'));
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 max-w-2xl mx-auto w-full select-none">
