@@ -23,19 +23,10 @@ export const createApp = (): Express => {
     })
   );
 
-  // CORS configuration
+  // CORS configuration - allow all origins so cloud deployments (Render, Vercel, etc.) and local environments work seamlessly
   app.use(
     cors({
-      origin: (
-        origin: string | undefined,
-        callback: (err: Error | null, allow?: boolean) => void
-      ) => {
-        if (!origin) return callback(null, true);
-        if (config.allowedOrigins.includes(origin) || config.nodeEnv === 'development') {
-          return callback(null, true);
-        }
-        return callback(new Error(`CORS blocked request from origin: ${origin}`));
-      },
+      origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -46,8 +37,8 @@ export const createApp = (): Express => {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-  // Global rate limiter
-  app.use(standardRateLimiter);
+  // Global rate limiter for API endpoints (do not rate limit static assets)
+  app.use('/api', standardRateLimiter);
 
   // Mount API routes
   app.use('/api/health', healthRouter);
