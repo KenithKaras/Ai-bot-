@@ -1,5 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Suspense, lazy } from 'react';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { AuthProvider, useAuth } from './hooks/useAuth.js';
+import { AuthScreen } from './components/auth/AuthScreen.js';
 import { useSettings } from './hooks/useSettings.js';
+import { useProviders } from './hooks/useProviders.js';
 import { useModels } from './hooks/useModels.js';
 import { useConversations } from './hooks/useConversations.js';
 import { useChat } from './hooks/useChat.js';
@@ -7,10 +11,28 @@ import { Sidebar } from './components/layout/Sidebar.js';
 import { MobileDrawer } from './components/layout/MobileDrawer.js';
 import { TopNav } from './components/layout/TopNav.js';
 import { ChatArea } from './components/chat/ChatArea.js';
-import { SettingsModal } from './components/settings/SettingsModal.js';
 
-export function App() {
+// Code-split heavy non-critical dialogs to minimize initial bundle size and speed up page load
+const SettingsModal = lazy(() =>
+  import('./components/settings/SettingsModal.js').then((m) => ({ default: m.SettingsModal }))
+);
+const AuthModal = lazy(() =>
+  import('./components/auth/AuthModal.js').then((m) => ({ default: m.AuthModal }))
+);
+
+function ChatAppContent() {
   const { settings, updateSettings } = useSettings();
+  const {
+    providers,
+    selectedProviderId,
+    selectedProvider,
+    selectProvider,
+    createProvider,
+    updateProvider,
+    deleteProvider,
+    setDefaultProvider,
+  } = useProviders();
+
   const {
     models,
     selectedModelId,
@@ -19,7 +41,7 @@ export function App() {
     error: modelError,
     refreshModels,
     selectModel,
-  } = useModels(settings.defaultModel);
+  } = useModels(settings.defaultModel, selectedProviderId);
 
   const {
     filteredConversations,
@@ -45,11 +67,13 @@ export function App() {
     activeConversation,
     selectedModelId,
     settings,
+    providerId: selectedProviderId,
     updateConversationMessages,
     createNewConversation,
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -131,6 +155,7 @@ export function App() {
           onNewConversation={handleNewConversation}
           onClearConversation={handleClearActiveConversation}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenAuth={() => setIsAuthOpen(true)}
           activeConversation={activeConversation}
           models={models}
           selectedModelId={selectedModelId}
@@ -139,6 +164,7 @@ export function App() {
           modelError={modelError}
           onSelectModel={selectModel}
           onRefreshModels={refreshModels}
+          selectedProvider={selectedProvider}
         />
 
         {/* Chat Area */}
@@ -152,20 +178,73 @@ export function App() {
           onRegenerate={() => regenerateResponse()}
           onEditAndResubmit={editAndResubmit}
           onRetry={handleRetry}
+          hasProviders={providers.length > 0}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
       </div>
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onUpdateSettings={updateSettings}
-        models={models}
-        onRefreshModels={refreshModels}
-        onClearAllHistory={clearAllConversations}
-      />
+      {/* Lazy-loaded Dialogs inside Suspense */}
+      <Suspense fallback={null}>
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            settings={settings}
+            onUpdateSettings={updateSettings}
+            models={models}
+            onRefreshModels={refreshModels}
+            onClearAllHistory={clearAllConversations}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            providers={providers}
+            selectedProviderId={selectedProviderId}
+            onSelectProvider={selectProvider}
+            onCreateProvider={createProvider}
+            onUpdateProvider={updateProvider}
+            onDeleteProvider={deleteProvider}
+            onSetDefaultProvider={setDefaultProvider}
+          />
+        )}
+
+        {isAuthOpen && (
+          <AuthModal
+            isOpen={isAuthOpen}
+            onClose={() => setIsAuthOpen(false)}
+          />
+        )}
+      </Suspense>
     </div>
+  );
+}
+
+function RootApp() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-screen bg-surface-950 flex flex-col items-center justify-center p-4 select-none">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-4 animate-pulse">
+          <Sparkles className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+          <span>Verifying session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
+
+  return <ChatAppContent />;
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <RootApp />
+    </AuthProvider>
   );
 }
 

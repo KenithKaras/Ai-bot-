@@ -6,6 +6,7 @@ export const useChat = (params: {
   activeConversation: Conversation | null;
   selectedModelId: string;
   settings: AppSettings;
+  providerId?: string | null;
   updateConversationMessages: (
     convId: string,
     updater: Message[] | ((prev: Message[]) => Message[])
@@ -16,6 +17,7 @@ export const useChat = (params: {
     activeConversation,
     selectedModelId,
     settings,
+    providerId,
     updateConversationMessages,
     createNewConversation,
   } = params;
@@ -138,6 +140,7 @@ export const useChat = (params: {
               temperature: settings.temperature,
               max_tokens: settings.maxTokens,
               requestId,
+              providerId: providerId || undefined,
             },
             {
               onInit: () => {},
@@ -197,6 +200,7 @@ export const useChat = (params: {
             temperature: settings.temperature,
             max_tokens: settings.maxTokens,
             requestId,
+            providerId: providerId || undefined,
           });
 
           const responseText = completion.choices?.[0]?.message?.content || '';

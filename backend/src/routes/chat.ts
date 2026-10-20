@@ -1,14 +1,38 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'crypto';
-import { aiProviderService } from '../services/aiProvider.js';
+import { aiProviderService, type ProviderConfig } from '../services/aiProvider.js';
+import { providerService } from '../services/providerService.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 import { validateBody, validateParams } from '../middleware/requestValidator.js';
 import { ChatRequestSchema, CancelRequestSchema, type ChatRequest } from '../schemas/chatSchema.js';
 import { chatRateLimiter } from '../middleware/rateLimiter.js';
 
 export const chatRouter = Router();
 
+// Enforce mandatory authentication for all chat actions (no guest access)
+chatRouter.use(requireAuth);
+
 // Apply chat rate limiter to all chat routes
 chatRouter.use(chatRateLimiter);
+
+/**
+ * Resolves the provider credentials for the request (user custom provider or server default)
+ */
+const resolveProviderConfig = (req: Request, providerId?: string): ProviderConfig | undefined => {
+  if (req.user) {
+    if (providerId) {
+      const dec = providerService.getDecryptedProvider(req.user.id, providerId);
+      if (dec) {
+        return { baseUrl: dec.baseUrl, apiKey: dec.apiKey };
+      }
+    }
+    const def = providerService.getDefaultDecryptedProvider(req.user.id);
+    if (def) {
+      return { baseUrl: def.baseUrl, apiKey: def.apiKey };
+    }
+  }
+  return undefined;
+};
 
 /**
  * POST /api/chat
@@ -19,8 +43,9 @@ chatRouter.post(
   validateBody(ChatRequestSchema),
   async (req: Request<{}, {}, ChatRequest>, res: Response, next: NextFunction) => {
     try {
-      const { model, messages, temperature, max_tokens, requestId } = req.body;
+      const { model, messages, temperature, max_tokens, requestId, providerId } = req.body;
       const effectiveRequestId = requestId || crypto.randomUUID();
+      const providerConfig = resolveProviderConfig(req, providerId);
 
       const completion = await aiProviderService.createChatCompletion({
         model,
@@ -28,6 +53,7 @@ chatRouter.post(
         temperature,
         max_tokens,
         requestId: effectiveRequestId,
+        providerConfig,
       });
 
       res.json(completion);
@@ -45,8 +71,9 @@ chatRouter.post(
   '/stream',
   validateBody(ChatRequestSchema),
   async (req: Request<{}, {}, ChatRequest>, res: Response, _next: NextFunction) => {
-    const { model, messages, temperature, max_tokens, requestId } = req.body;
+    const { model, messages, temperature, max_tokens, requestId, providerId } = req.body;
     const effectiveRequestId = requestId || crypto.randomUUID();
+    const providerConfig = resolveProviderConfig(req, providerId);
 
     // Disable TCP delay for real-time token delivery
     req.socket.setNoDelay(true);
@@ -87,8 +114,21 @@ chatRouter.post(
           temperature,
           max_tokens,
           requestId: effectiveRequestId,
+          providerConfig,
         },
         {
+          onInit: (initData) => {
+            if (!res.writableEnded && initData.ttftMs !== undefined) {
+              res.write(
+                `event: timing\ndata: ${JSON.stringify({
+                  ttftMs: initData.ttftMs,
+                })}\n\n`
+              );
+              if (typeof (res as any).flush === 'function') {
+                (res as any).flush();
+              }
+            }
+          },
           onChunk: (chunk) => {
             if (!res.writableEnded) {
               res.write(`event: chunk\ndata: ${JSON.stringify(chunk)}\n\n`);
@@ -97,11 +137,13 @@ chatRouter.post(
               }
             }
           },
-          onDone: (finishReason) => {
+          onDone: (finishReason, metrics) => {
             if (!res.writableEnded) {
               res.write(
                 `event: done\ndata: ${JSON.stringify({
                   finishReason: finishReason || 'stop',
+                  ttftMs: metrics?.ttftMs,
+                  totalTimeMs: metrics?.totalTimeMs,
                 })}\n\n`
               );
               res.end();

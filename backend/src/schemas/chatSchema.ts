@@ -18,6 +18,7 @@ export const ChatRequestSchema = z.object({
   max_tokens: z.number().int().positive().max(32000).optional(),
   stream: z.boolean().optional().default(false),
   requestId: z.string().optional(),
+  providerId: z.string().optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 

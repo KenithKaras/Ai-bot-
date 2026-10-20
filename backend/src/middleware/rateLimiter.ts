@@ -34,3 +34,20 @@ export const chatRateLimiter = rateLimit({
     },
   },
 });
+
+/**
+ * Authentication rate limiter to mitigate brute-force and credential stuffing attacks
+ */
+export const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'test' ? 1000 : 20, // 20 attempts per 15 min per IP in prod
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: 'Too many authentication attempts from this IP. Please try again later.',
+      code: 'AUTH_RATE_LIMIT_EXCEEDED',
+      status: 429,
+    },
+  },
+});

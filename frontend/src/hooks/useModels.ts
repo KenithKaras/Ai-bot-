@@ -4,7 +4,7 @@ import type { Model } from '../types/index.js';
 
 const SELECTED_MODEL_KEY = 'radox_ai_selected_model';
 
-export const useModels = (defaultModelId = 'claude-sonnet-5') => {
+export const useModels = (defaultModelId = 'claude-sonnet-5', providerId?: string | null) => {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModelId, setSelectedModelIdState] = useState<string>(() => {
     return localStorage.getItem(SELECTED_MODEL_KEY) || defaultModelId;
@@ -16,7 +16,7 @@ export const useModels = (defaultModelId = 'claude-sonnet-5') => {
     setIsLoading(true);
     setError(null);
     try {
-      const fetched = await apiService.getModels();
+      const fetched = await apiService.getModels(providerId || undefined);
       setModels(fetched);
 
       // If no model currently selected, or current selection isn't in list, pick first Claude model or first model
@@ -38,7 +38,7 @@ export const useModels = (defaultModelId = 'claude-sonnet-5') => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [providerId]);
 
   useEffect(() => {
     fetchModels();

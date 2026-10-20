@@ -1,4 +1,7 @@
 import OpenAI from 'openai';
+import http from 'http';
+import https from 'https';
+import crypto from 'crypto';
 import { config, isApiKeyConfigured } from '../config.js';
 import type { ChatMessage } from '../schemas/chatSchema.js';
 
@@ -16,32 +19,37 @@ export interface NormalizedModel {
 }
 
 export interface StreamCallbacks {
+  onInit?: (data: { ttftMs?: number }) => void;
   onChunk: (chunk: { content?: string; reasoningContent?: string }) => void;
-  onDone: (finishReason?: string) => void;
+  onDone: (finishReason?: string, metrics?: { ttftMs?: number; totalTimeMs?: number }) => void;
   onError: (error: Error) => void;
 }
 
+export interface ProviderConfig {
+  baseUrl: string;
+  apiKey: string;
+}
+
+// Global HTTP Keep-Alive agents for high-throughput connection pooling
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 60, timeout: 60000 });
+
 export class AIProviderService {
-  private client: OpenAI | null = null;
+  private clientCache: Map<string, OpenAI> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
 
   constructor() {
-    this.initClient();
+    this.initDefaultClient();
   }
 
   /**
-   * Initialize or reinitialize the OpenAI SDK client
+   * Initializes or refreshes the default global server client
    */
-  public initClient(): void {
+  public initDefaultClient(): void {
     if (isApiKeyConfigured()) {
-      this.client = new OpenAI({
+      this.getOrCreateClient({
+        baseUrl: config.radoxBaseUrl,
         apiKey: config.radoxApiKey,
-        baseURL: config.radoxBaseUrl,
-        timeout: config.requestTimeoutMs,
-        maxRetries: 1, // Keep retries bounded to prevent unexpected token charges
       });
-    } else {
-      this.client = null;
     }
   }
 
@@ -49,25 +57,44 @@ export class AIProviderService {
     return isApiKeyConfigured();
   }
 
-  private getClient(): OpenAI {
-    if (!this.client) {
-      if (isApiKeyConfigured()) {
-        this.initClient();
-      }
-    }
-    if (!this.client) {
+  /**
+   * Retrieves or instantiates a cached OpenAI client instance with HTTP connection pooling
+   */
+  public getOrCreateClient(providerConfig?: ProviderConfig): OpenAI {
+    const baseUrl = providerConfig?.baseUrl || config.radoxBaseUrl;
+    const apiKey = providerConfig?.apiKey || config.radoxApiKey;
+
+    if (!apiKey) {
       throw new Error(
-        'RADOX_API_KEY is not configured on the backend server. Please set RADOX_API_KEY in backend/.env'
+        'No AI Provider API key configured. Please configure an API Gateway in Settings or configure RADOX_API_KEY in backend/.env'
       );
     }
-    return this.client;
+
+    const cacheKey = crypto
+      .createHash('sha256')
+      .update(`${baseUrl}::${apiKey}`)
+      .digest('hex');
+
+    let client = this.clientCache.get(cacheKey);
+    if (!client) {
+      client = new OpenAI({
+        apiKey,
+        baseURL: baseUrl,
+        timeout: config.requestTimeoutMs,
+        maxRetries: 1,
+        httpAgent: httpsAgent,
+      });
+      this.clientCache.set(cacheKey, client);
+    }
+
+    return client;
   }
 
   /**
-   * Fetches models from Radox AI and normalizes them
+   * Fetches models from the gateway and normalizes them
    */
-  public async listModels(): Promise<NormalizedModel[]> {
-    const client = this.getClient();
+  public async listModels(providerConfig?: ProviderConfig): Promise<NormalizedModel[]> {
+    const client = this.getOrCreateClient(providerConfig);
 
     try {
       const response = await client.models.list();
@@ -81,14 +108,14 @@ export class AIProviderService {
           idLower.includes('reasoning') ||
           idLower.includes('deepseek-r') ||
           idLower.includes('o1') ||
-          idLower.includes('o3');
+          idLower.includes('o3') ||
+          idLower.includes('opus');
         const isVision =
           idLower.includes('vision') ||
           idLower.includes('4o') ||
           idLower.includes('claude-3') ||
           idLower.includes('gemini');
 
-        // Clean display name
         const displayName = model.id
           .replace(/[-_]/g, ' ')
           .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -96,25 +123,24 @@ export class AIProviderService {
         return {
           id: model.id,
           name: displayName,
-          ownedBy: model.owned_by || 'radox',
+          ownedBy: model.owned_by || 'ai-gateway',
           created: model.created || Math.floor(Date.now() / 1000),
           isClaude,
           capabilities: {
-            streaming: true, // Radox AI gateway supports streaming across modern chat models
+            streaming: true,
             vision: isVision,
             reasoning: isReasoning,
           },
         };
       });
 
-      // Sort models: Claude models first, then alphabetical by id
       return normalized.sort((a, b) => {
         if (a.isClaude && !b.isClaude) return -1;
         if (!a.isClaude && b.isClaude) return 1;
         return a.id.localeCompare(b.id);
       });
     } catch (error: any) {
-      throw this.sanitizeError(error, 'Failed to fetch models from Radox AI');
+      throw this.sanitizeError(error, 'Failed to fetch models from provider');
     }
   }
 
@@ -127,8 +153,9 @@ export class AIProviderService {
     temperature?: number;
     max_tokens?: number;
     requestId?: string;
+    providerConfig?: ProviderConfig;
   }) {
-    const client = this.getClient();
+    const client = this.getOrCreateClient(params.providerConfig);
     const controller = new AbortController();
 
     if (params.requestId) {
@@ -164,7 +191,7 @@ export class AIProviderService {
   }
 
   /**
-   * Streams chat completion token-by-token using SSE
+   * Streams chat completion token-by-token with TTFT latency tracking
    */
   public async streamChatCompletion(
     params: {
@@ -173,12 +200,16 @@ export class AIProviderService {
       temperature?: number;
       max_tokens?: number;
       requestId: string;
+      providerConfig?: ProviderConfig;
     },
     callbacks: StreamCallbacks
   ): Promise<void> {
-    const client = this.getClient();
+    const client = this.getOrCreateClient(params.providerConfig);
     const controller = new AbortController();
     this.activeStreams.set(params.requestId, controller);
+
+    const startTime = Date.now();
+    let ttftMs: number | undefined = undefined;
 
     try {
       const stream = await client.chat.completions.create(
@@ -203,6 +234,11 @@ export class AIProviderService {
           return;
         }
 
+        if (ttftMs === undefined) {
+          ttftMs = Date.now() - startTime;
+          callbacks.onInit?.({ ttftMs });
+        }
+
         const choice = chunk.choices?.[0];
         const content = choice?.delta?.content || '';
         const reasoningContent = (choice?.delta as any)?.reasoning_content || undefined;
@@ -216,8 +252,8 @@ export class AIProviderService {
         }
       }
 
-      // Complete stream after all chunks have been received
-      callbacks.onDone(lastFinishReason || 'stop');
+      const totalTimeMs = Date.now() - startTime;
+      callbacks.onDone(lastFinishReason || 'stop', { ttftMs, totalTimeMs });
     } catch (error: any) {
       if (controller.signal.aborted) {
         callbacks.onDone('cancelled');
@@ -244,11 +280,11 @@ export class AIProviderService {
   }
 
   /**
-   * Test provider connection
+   * Test provider connection and measure latency
    */
-  public async testConnection(): Promise<{ latencyMs: number; modelCount: number }> {
+  public async testConnection(providerConfig?: ProviderConfig): Promise<{ latencyMs: number; modelCount: number }> {
     const start = Date.now();
-    const models = await this.listModels();
+    const models = await this.listModels(providerConfig);
     const latencyMs = Date.now() - start;
     return { latencyMs, modelCount: models.length };
   }
@@ -260,29 +296,28 @@ export class AIProviderService {
     const status = error?.status || error?.statusCode;
     const rawMsg = error?.message || '';
 
-    // Check specific OpenAI/Radox error cases
     if (status === 401 || rawMsg.includes('401') || rawMsg.toLowerCase().includes('api key')) {
-      return new Error('Invalid or unauthorized Radox AI API key. Please check your credentials.');
+      return new Error('Invalid or unauthorized API key for the selected AI provider.');
     }
     if (status === 429 || rawMsg.includes('429') || rawMsg.toLowerCase().includes('quota') || rawMsg.toLowerCase().includes('credit')) {
-      return new Error('Radox AI rate limit or balance quota exceeded. Please check your account credits.');
+      return new Error('Rate limit or balance quota exceeded on the AI provider.');
     }
     if (status === 404 || rawMsg.includes('404')) {
-      return new Error('The requested model was not found on Radox AI or is temporarily unavailable.');
+      return new Error('The requested model was not found on the AI provider or is temporarily unavailable.');
     }
     if (status === 502 || status === 503 || status === 504) {
-      return new Error('Radox AI gateway service is temporarily unavailable. Please retry shortly.');
+      return new Error('AI provider gateway is temporarily unavailable. Please retry shortly.');
     }
     if (rawMsg.includes('ETIMEDOUT') || rawMsg.includes('timeout')) {
-      return new Error('Request to Radox AI timed out. Upstream server took too long to respond.');
+      return new Error('Request to AI provider timed out. Upstream server took too long to respond.');
     }
     if (rawMsg.includes('ECONNREFUSED') || rawMsg.includes('ENOTFOUND')) {
-      return new Error('Unable to reach Radox AI gateway. Please verify network connectivity.');
+      return new Error('Unable to reach AI provider gateway. Please verify network connectivity and Base URL.');
     }
 
-    // Strip sensitive parameters or patterns
     const cleanMsg = rawMsg
       .replace(/cc_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]')
+      .replace(/sk-[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]')
       .replace(/Bearer\s+[a-zA-Z0-9_\-.]+/gi, 'Bearer [REDACTED]')
       .trim();
 

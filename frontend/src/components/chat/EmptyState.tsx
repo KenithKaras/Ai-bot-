@@ -1,11 +1,13 @@
 import React from 'react';
-import { Sparkles, Terminal, Code2, Cpu, ArrowUpRight, Zap } from 'lucide-react';
+import { Sparkles, Terminal, Code2, Cpu, ArrowUpRight, Zap, Server, Settings } from 'lucide-react';
 import type { Model } from '../../types/index.js';
 
 interface EmptyStateProps {
   selectedModel: Model | null;
   selectedModelId: string;
   onSelectPrompt: (prompt: string) => void;
+  hasProviders?: boolean;
+  onOpenSettings?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -39,11 +41,39 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   selectedModel,
   selectedModelId,
   onSelectPrompt,
+  hasProviders = true,
+  onOpenSettings,
 }) => {
   const isOpus = Boolean(selectedModelId && selectedModelId.toLowerCase().includes('opus'));
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 max-w-2xl mx-auto w-full select-none">
+      {/* Provider Notice if no gateway configured */}
+      {!hasProviders && (
+        <div className="w-full mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 flex-shrink-0 mt-0.5 sm:mt-0">
+              <Server className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-xs text-white">No AI Gateway Configured</h3>
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                Connect your OpenAI, Anthropic, OpenRouter, or custom provider API in Settings to enable chat models.
+              </p>
+            </div>
+          </div>
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="flex-shrink-0 self-end sm:self-auto px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition shadow-sm flex items-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Configure Provider</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Brand Icon Header */}
       <div className="flex flex-col items-center text-center mb-6">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/15 mb-4 transform hover:scale-105 transition-transform duration-300">

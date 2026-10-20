@@ -25,6 +25,11 @@ export interface AppConfig {
   rateLimitWindowMs: number;
   rateLimitMaxRequests: number;
   requestTimeoutMs: number;
+  supabaseUrl: string;
+  supabaseSecretKey: string;
+  supabasePublishableKey: string;
+  appEncryptionKey: string;
+  databaseDriver: 'sqlite' | 'supabase';
 }
 
 const parseOrigins = (rawOrigins?: string): string[] => {
@@ -46,6 +51,11 @@ export const config: AppConfig = {
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
   rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '60', 10),
   requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '60000', 10),
+  supabaseUrl: (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''),
+  supabaseSecretKey: (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
+  supabasePublishableKey: (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim(),
+  appEncryptionKey: (process.env.APP_ENCRYPTION_KEY || '').trim(),
+  databaseDriver: (process.env.DATABASE_DRIVER === 'supabase' ? 'supabase' : 'sqlite'),
 };
 
 export const isApiKeyConfigured = (): boolean => {

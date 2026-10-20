@@ -24,7 +24,7 @@ interface MessageItemProps {
   onRetry?: () => void;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({
+export const MessageItem = React.memo<MessageItemProps>(({
   message,
   isLast,
   isGenerating,
@@ -238,4 +238,4 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       </div>
     </div>
   );
-};
+});

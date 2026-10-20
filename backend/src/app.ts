@@ -1,14 +1,18 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 import { config } from './config.js';
 import { standardRateLimiter } from './middleware/rateLimiter.js';
+import { optionalAuth } from './middleware/authMiddleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
 import { modelsRouter } from './routes/models.js';
 import { chatRouter } from './routes/chat.js';
+import { authRouter } from './routes/auth.js';
+import { providersRouter } from './routes/providers.js';
 
 export const createApp = (): Express => {
   const app = express();
@@ -36,11 +40,17 @@ export const createApp = (): Express => {
   // Standard request limit & parsing
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(cookieParser());
 
   // Global rate limiter for API endpoints (do not rate limit static assets)
   app.use('/api', standardRateLimiter);
 
+  // Attach authenticated user to req.user if session present
+  app.use('/api', optionalAuth);
+
   // Mount API routes
+  app.use('/api/auth', authRouter);
+  app.use('/api/providers', providersRouter);
   app.use('/api/health', healthRouter);
   app.use('/api/models', modelsRouter);
   app.use('/api/chat', chatRouter);

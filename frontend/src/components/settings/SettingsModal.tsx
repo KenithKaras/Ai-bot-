@@ -11,9 +11,20 @@ import {
   AlertCircle,
   ShieldCheck,
   RotateCw,
+  LogOut,
+  LogIn,
 } from 'lucide-react';
 import { apiService } from '../../services/api.js';
-import type { AppSettings, Model, ProviderStatus } from '../../types/index.js';
+import { useAuth } from '../../hooks/useAuth.js';
+import { ProviderManager } from './ProviderManager.js';
+import type {
+  AppSettings,
+  Model,
+  ProviderStatus,
+  SafeProvider,
+  ProviderCreateInput,
+  ProviderUpdateInput,
+} from '../../types/index.js';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -23,6 +34,14 @@ interface SettingsModalProps {
   models: Model[];
   onRefreshModels: () => void;
   onClearAllHistory: () => void;
+  onOpenAuth?: () => void;
+  providers?: SafeProvider[];
+  selectedProviderId?: string | null;
+  onSelectProvider?: (id: string | null) => void;
+  onCreateProvider?: (data: ProviderCreateInput) => Promise<SafeProvider>;
+  onUpdateProvider?: (id: string, data: ProviderUpdateInput) => Promise<SafeProvider>;
+  onDeleteProvider?: (id: string) => Promise<void>;
+  onSetDefaultProvider?: (id: string) => Promise<void>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -33,7 +52,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   models,
   onRefreshModels,
   onClearAllHistory,
+  onOpenAuth,
+  providers = [],
+  selectedProviderId = null,
+  onSelectProvider = () => {},
+  onCreateProvider = async () => ({} as SafeProvider),
+  onUpdateProvider = async () => ({} as SafeProvider),
+  onDeleteProvider = async () => {},
+  onSetDefaultProvider = async () => {},
 }) => {
+  const { user, isAuthenticated, logout } = useAuth();
   const [providerStatus, setProviderStatus] = useState<ProviderStatus>({
     status: 'idle',
   });
@@ -96,6 +124,76 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="p-5 space-y-6 overflow-y-auto flex-1 text-sm">
+          {/* Account Section */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-surface-850 border border-slate-200/80 dark:border-slate-800">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+              Account
+            </label>
+            {isAuthenticated && user ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                      {user.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {user.email}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    await logout();
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 text-xs font-medium flex items-center gap-1.5 transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    Guest Mode (Local Only)
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Sign in to protect your chats and sync settings across devices.
+                  </p>
+                </div>
+                {onOpenAuth && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onOpenAuth();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <LogIn className="w-3.5 h-3.5" /> Sign In
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Custom AI Provider Gateways Section */}
+          <ProviderManager
+            providers={providers}
+            selectedProviderId={selectedProviderId}
+            onSelectProvider={onSelectProvider}
+            onCreateProvider={onCreateProvider}
+            onUpdateProvider={onUpdateProvider}
+            onDeleteProvider={onDeleteProvider}
+            onSetDefaultProvider={onSetDefaultProvider}
+            isAuthenticated={isAuthenticated}
+            onOpenAuth={() => {
+              onClose();
+              onOpenAuth?.();
+            }}
+          />
+
           {/* Appearance Section */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">

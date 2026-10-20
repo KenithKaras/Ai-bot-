@@ -32,3 +32,16 @@ Thumbs.db
 # Test coverage
 coverage/
 *.lcov
+
+# Databases & Backups
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.db.bak*
+*.bak
+*.bak.*
+*.sqlite
+data/
+backend/data/
+*checkpoint.json*

@@ -15,6 +15,8 @@ interface ChatAreaProps {
   onRegenerate: () => void;
   onEditAndResubmit: (messageId: string, newContent: string) => void;
   onRetry: () => void;
+  hasProviders?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -27,6 +29,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onRegenerate,
   onEditAndResubmit,
   onRetry,
+  hasProviders = true,
+  onOpenSettings,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -71,6 +75,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               selectedModel={selectedModel}
               selectedModelId={selectedModelId}
               onSelectPrompt={onSendMessage}
+              hasProviders={hasProviders}
+              onOpenSettings={onOpenSettings}
             />
           </div>
         ) : (

@@ -7,7 +7,7 @@ interface MarkdownRendererProps {
   content: string;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content }) => {
   return (
     <div className="prose dark:prose-invert max-w-none text-slate-900 dark:text-slate-100 leading-relaxed text-[15px] break-words">
       <ReactMarkdown
@@ -95,4 +95,4 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
       </ReactMarkdown>
     </div>
   );
-};
+});

@@ -1,15 +1,62 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { initDatabase, closeDb } from '../src/db/database.js';
+import { authService } from '../src/services/authService.js';
 import { aiProviderService } from '../src/services/aiProvider.js';
 
 describe('Chat Routes', () => {
-  const app = createApp();
+  let app: any;
+  let testSession: any;
+
+  beforeEach(async () => {
+    closeDb();
+    initDatabase(':memory:');
+    app = createApp();
+
+    const { session } = await authService.register({
+      email: 'chat-tester@example.com',
+      password: 'SecurePassword123!',
+      name: 'Chat Tester',
+    });
+    testSession = session;
+  });
+
+  afterAll(() => {
+    closeDb();
+  });
+
+  describe('Authentication Enforcement', () => {
+    it('should reject unauthenticated requests to POST /api/chat with 401', async () => {
+      const res = await request(app)
+        .post('/api/chat')
+        .send({
+          model: 'claude-3-7-sonnet',
+          messages: [{ role: 'user', content: 'Hello' }],
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('should reject unauthenticated requests to POST /api/chat/stream with 401', async () => {
+      const res = await request(app)
+        .post('/api/chat/stream')
+        .send({
+          model: 'claude-3-7-sonnet',
+          messages: [{ role: 'user', content: 'Hello' }],
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('UNAUTHORIZED');
+    });
+  });
 
   describe('Validation', () => {
     it('should reject request missing model', async () => {
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           messages: [{ role: 'user', content: 'Hello' }],
         });
@@ -22,6 +69,7 @@ describe('Chat Routes', () => {
     it('should reject request with empty messages array', async () => {
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           model: 'claude-3-7-sonnet',
           messages: [],
@@ -35,6 +83,7 @@ describe('Chat Routes', () => {
     it('should reject request with invalid role', async () => {
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           model: 'claude-3-7-sonnet',
           messages: [{ role: 'invalid_role', content: 'Hello' }],
@@ -47,6 +96,7 @@ describe('Chat Routes', () => {
     it('should reject empty message content', async () => {
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           model: 'claude-3-7-sonnet',
           messages: [{ role: 'user', content: '' }],
@@ -75,6 +125,7 @@ describe('Chat Routes', () => {
 
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           model: 'claude-3-7-sonnet',
           messages: [{ role: 'user', content: 'Hello' }],
@@ -91,6 +142,7 @@ describe('Chat Routes', () => {
 
       const res = await request(app)
         .post('/api/chat')
+        .set('Authorization', `Bearer ${testSession.id}`)
         .send({
           model: 'claude-3-7-sonnet',
           messages: [{ role: 'user', content: 'Hello' }],
@@ -105,7 +157,10 @@ describe('Chat Routes', () => {
     it('DELETE /api/chat/stream/:requestId should invoke cancellation service', async () => {
       vi.spyOn(aiProviderService, 'cancelRequest').mockReturnValue(true);
 
-      const res = await request(app).delete('/api/chat/stream/req-test-123');
+      const res = await request(app)
+        .delete('/api/chat/stream/req-test-123')
+        .set('Authorization', `Bearer ${testSession.id}`);
+
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.cancelled).toBe(true);

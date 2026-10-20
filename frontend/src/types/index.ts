@@ -52,3 +52,46 @@ export interface ProviderStatus {
   modelCount?: number;
   message?: string;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AuthSession {
+  id: string;
+  userId: string;
+  expiresAt: number;
+  createdAt: number;
+  refreshToken?: string;
+}
+
+export interface SafeProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  keyPreview: string;
+  defaultModel: string | null;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProviderCreateInput {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  defaultModel?: string;
+  isDefault?: boolean;
+}
+
+export interface ProviderUpdateInput {
+  name?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  defaultModel?: string;
+  isDefault?: boolean;
+}
